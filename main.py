@@ -4,9 +4,17 @@ from tatkal import calculate_tatkal_time
 from curravl import calculate_current_booking_time
 from scheduler import schedule_alert 
 from datetime import datetime
+from db import conn, cursor
+from startup import restore_pending_alerts
+
 
 
 app = FastAPI(title="Train Booking Alert System")
+
+
+@app.on_event("startup")
+def startup_event():
+    restore_pending_alerts()
 
 @app.get("/")
 def root():
@@ -52,12 +60,29 @@ def create_alert(alert: AlertRequest):
             alert.train_start_time
         )
 
+        cursor.execute(
+    "INSERT INTO alerts (email, train_no, alert_type, alert_time, status) VALUES (?, ?, ?, ?, ?)",
+    (alert.user_email, alert.train_no, "CURRENT", cb_time.isoformat(), "PENDING")
+)
+        conn.commit()
+
+
+        alert_id = cursor.lastrowid
+
+        schedule_alert(
+    alert_id,
+    cb_time,
+    alert.user_email,
+    alert.train_no
+)
         
 
         schedule_alert(
-            cb_time,
-            alert.user_email,
-            f"Current Booking OPEN for Train {alert.train_no}"
+            alert_id,
+    cb_time,
+    alert.user_email,
+    alert.train_no,
+            
         )
 
         return {
